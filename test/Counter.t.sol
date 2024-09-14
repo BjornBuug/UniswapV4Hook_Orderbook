@@ -48,6 +48,7 @@ contract CounterTest is Test, Fixtures {
                     Hooks.BEFORE_REMOVE_LIQUIDITY_FLAG
             ) ^ (0x4444 << 144) // Namespace the hook to avoid collisions
         );
+
         bytes memory constructorArgs = abi.encode(manager); //Add all the necessary constructor arguments from the hook
         deployCodeTo("Counter.sol:Counter", constructorArgs, flags);
         hook = Counter(flags);

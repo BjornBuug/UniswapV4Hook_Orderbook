@@ -174,8 +174,8 @@ contract OrderBookHookV4 is BaseHook {
         );
 
         _trade(
-            Currency.unwrap(key.currency0),
-            Currency.unwrap(key.currency1),
+            Currency.unwrap(key.currency0), // ETH
+            Currency.unwrap(key.currency1), // Tokens
             swapParams.zeroForOne,
             limitPrice,
             amount,

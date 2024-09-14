@@ -856,6 +856,7 @@ contract MatchingEngine is Initializable, ReentrancyGuard, AccessControl {
         uint32 n,
         address recipient
     ) external payable returns (uint256 makePrice, uint256 placed, uint32 id) {
+        // Wrapped ETH to become WETH
         IWETH(WETH).deposit{value: msg.value}();
         return limitSell(WETH, quote, price, msg.value, isMaker, n, recipient);
     }
