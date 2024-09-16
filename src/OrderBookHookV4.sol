@@ -29,9 +29,14 @@ contract OrderBookHookV4 is BaseHook {
     mapping(PoolId => uint256 count) public beforeAddLiquidityCount;
     mapping(PoolId => uint256 count) public beforeRemoveLiquidityCount;
 
+    // constructor(IPoolManager _poolManager) BaseHook(_poolManager) {}
+
     address matchingEngine;
     address weth;
 
+    // Pseudo code
+    // include a constructor as well as basehook contract
+    // utilize the PoolManager contract, weth, matchingengine
     constructor(
         IPoolManager _poolmanager,
         address _matchingengine,
@@ -65,6 +70,23 @@ contract OrderBookHookV4 is BaseHook {
                 afterRemoveLiquidityReturnDelta: false
             });
     }
+
+    // function beforeSwap(
+    //     address,
+    //     PoolKey calldata,
+    //     IPoolManager.SwapParams calldata,
+    //     bytes calldata
+    // ) external override returns (bytes4, BeforeSwapDelta, uint24) {
+    //     return (
+    //         BaseHook.beforeSwap.selector,
+    //         BeforeSwapDeltaLibrary.ZERO_DELTA,
+    //         0
+    //     );
+    // }
+
+    // -----------------------------------------------
+    // NOTE: see IHooks.sol for function documentation
+    // -----------------------------------------------
 
     function toBeforeSwapDelta(
         int128 deltaSpecified,
@@ -103,6 +125,8 @@ contract OrderBookHookV4 is BaseHook {
         IPoolManager.SwapParams calldata swapParams,
         bytes calldata orderHookData
     ) internal returns (uint128 amountDelta) {
+        // =>if the orderHookData is empy
+        // return 0
         if (orderHookData.length == 0) return 0;
 
         (
@@ -151,6 +175,8 @@ contract OrderBookHookV4 is BaseHook {
         poolManager.settle(); // Check this out
     }
 
+    // Transfer the user's deposited tokens from the PoolManager to be sold
+    // as part of a limit order
     function _take(Currency currency, uint128 amount) internal {
         // Take tokens out of PM to our hook contract
         // What is the "take function"
