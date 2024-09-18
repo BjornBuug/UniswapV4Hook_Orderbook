@@ -18,19 +18,6 @@ contract OrderBookHookV4 is BaseHook {
     using BeforeSwapDeltaLibrary for BeforeSwapDelta;
     using CurrencyLibrary for Currency;
 
-    // NOTE: ---------------------------------------------------------
-    // state variables should typically be unique to a pool
-    // a single hook contract should be able to service multiple pools
-    // ---------------------------------------------------------------
-
-    mapping(PoolId => uint256 count) public beforeSwapCount;
-    mapping(PoolId => uint256 count) public afterSwapCount;
-
-    mapping(PoolId => uint256 count) public beforeAddLiquidityCount;
-    mapping(PoolId => uint256 count) public beforeRemoveLiquidityCount;
-
-    // constructor(IPoolManager _poolManager) BaseHook(_poolManager) {}
-
     address matchingEngine;
     address weth;
 
@@ -61,7 +48,7 @@ contract OrderBookHookV4 is BaseHook {
                 beforeRemoveLiquidity: false,
                 afterRemoveLiquidity: false,
                 beforeSwap: true,
-                afterSwap: false,
+                afterSwap: true,
                 beforeDonate: false,
                 afterDonate: false,
                 beforeSwapReturnDelta: true, // true
@@ -70,23 +57,6 @@ contract OrderBookHookV4 is BaseHook {
                 afterRemoveLiquidityReturnDelta: false
             });
     }
-
-    // function beforeSwap(
-    //     address,
-    //     PoolKey calldata,
-    //     IPoolManager.SwapParams calldata,
-    //     bytes calldata
-    // ) external override returns (bytes4, BeforeSwapDelta, uint24) {
-    //     return (
-    //         BaseHook.beforeSwap.selector,
-    //         BeforeSwapDeltaLibrary.ZERO_DELTA,
-    //         0
-    //     );
-    // }
-
-    // -----------------------------------------------
-    // NOTE: see IHooks.sol for function documentation
-    // -----------------------------------------------
 
     function toBeforeSwapDelta(
         int128 deltaSpecified,
@@ -104,7 +74,17 @@ contract OrderBookHookV4 is BaseHook {
         }
     }
 
-    // // TODO Modifier where only poolManager can call this beforeSwap.
+    function afterSwap(
+        address,
+        PoolKey calldata key,
+        IPoolManager.swapParams calldata swapParams,
+        BalanceDelta delta,
+        bytes calldata orderHookData
+    ) external override returns (bytes4, int128) {
+        return (BaseHook.afterSwap.selector, 0);
+    }
+
+    // TODO Modifier where only poolManager can call this beforeSwap.
     function beforeSwap(
         address,
         PoolKey calldata key,
@@ -112,6 +92,7 @@ contract OrderBookHookV4 is BaseHook {
         bytes calldata orderHookData
     ) external override returns (bytes4, BeforeSwapDelta, uint24) {
         uint128 amount = _limitOrder(key, swapParams, orderHookData);
+        // TODO: Add mint for the user to mintERC1155
         return (
             BaseHook.beforeSwap.selector,
             toBeforeSwapDelta(int128(amount), 0), // ?? check this back if it reverts

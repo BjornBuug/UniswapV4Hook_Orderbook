@@ -1,3 +1,0 @@
-## TODO: Implement the afterswap hooks to match the order if certain condition are meet(price, tick, etc)
-## reasearch on What are the condition for limitorder to be executed and match
-## Reasearch based on the digram, afterSwap hooks.

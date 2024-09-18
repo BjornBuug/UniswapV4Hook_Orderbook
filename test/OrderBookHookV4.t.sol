@@ -93,7 +93,9 @@ contract OrderBookHookV4Test is Test, Helpers, Fixtures {
         // Deploy the hook to an address with the correct flags
         address flags = address(
             uint160(
-                Hooks.BEFORE_SWAP_FLAG | Hooks.BEFORE_SWAP_RETURNS_DELTA_FLAG
+                Hooks.BEFORE_SWAP_FLAG |
+                    Hooks.AFTER_SWAP_FLAG |
+                    Hooks.BEFORE_SWAP_RETURNS_DELTA_FLAG
             ) ^ (0x4444 << 144) // Namespace the hook to avoid collisions
         );
 
