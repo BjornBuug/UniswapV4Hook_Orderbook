@@ -13,6 +13,11 @@ import {BeforeSwapDelta, BeforeSwapDeltaLibrary} from "v4-core/src/types/BeforeS
 import {CurrencyLibrary, Currency} from "v4-core/src/types/Currency.sol";
 import {IERC20} from "openzeppelin/contracts/token/erc20/IERC20.sol";
 
+// TODO:
+// [] MAke the hook ERC1155 to mint for the user a receipt when they placed order
+// {] burn it when they redemmed or canceled it.
+// [] Create redeem function, cancel function.
+
 contract OrderBookHookV4 is BaseHook {
     using PoolIdLibrary for PoolKey;
     using BeforeSwapDeltaLibrary for BeforeSwapDelta;
@@ -74,14 +79,70 @@ contract OrderBookHookV4 is BaseHook {
         }
     }
 
+    // function getHookData(
+    //     uint256 limitPrice,
+    //     uint256 amount,
+    //     address recipient,
+    //     bool isMaker,
+    //     uint32 n
+    // ) public pure returns (bytes memory) {
+    //     return abi.encode(limitPrice, amount, recipient, isMaker, n);
+    // }
+
     function afterSwap(
         address,
         PoolKey calldata key,
-        IPoolManager.swapParams calldata swapParams,
+        IPoolManager.SwapParams calldata swapParams,
         BalanceDelta delta,
         bytes calldata orderHookData
     ) external override returns (bytes4, int128) {
+        // Check if the orderOrderHookData is not empty [x]
+        if (orderHookData.length == 0) return (BaseHook.afterSwap.selector, 0);
+
+        // Decode the the orderHook data to retrive te order details
+        (
+            uint256 limitPrice,
+            uint256 amount,
+            address recipient,
+            bool isMaker,
+            uint32 n
+        ) = abi.decode(
+                orderHookData,
+                (uint256, uint256, address, bool, uint32)
+            );
+
+        // Create a function to to match the order
+
+        // Calculate the delta for the unspecified currency
+
         return (BaseHook.afterSwap.selector, 0);
+    }
+
+    /**
+        struct SwapParams {
+        bool zeroForOne;
+        int256 amountSpecified;
+        uint160 sqrtPriceLimitX96;
+    } */
+
+    // Returns the matched Amount, and output
+    function _matchOrder(
+        PoolKey calldata key,
+        IPoolManager.SwapParams calldata swapParams,
+        uint256 limitPrice,
+        uint256 amount,
+        address recipient,
+        bool isMaker,
+        uint32 n
+    ) private returns (uint256 matchedAmount, uint256 outputAmount) {
+        // Determine which tokens is being traded [x]
+        address tokenIn = swapParams.zeroForOne
+            ? Currency.unwrap(key.currency0)
+            : Currency.unwrap(key.currency1);
+
+        address tokenOut = swapParams.zeroForOne
+            ? Currency.unwrap(key.currency1)
+            : Currency.unwrap(key.currency0);
     }
 
     // TODO Modifier where only poolManager can call this beforeSwap.
@@ -91,8 +152,12 @@ contract OrderBookHookV4 is BaseHook {
         IPoolManager.SwapParams calldata swapParams,
         bytes calldata orderHookData
     ) external override returns (bytes4, BeforeSwapDelta, uint24) {
+        if (orderHookData.length == 0)
+            return (BaseHook.beforeSwap.selector, toBeforeSwapDelta(0, 0), 0);
+
         uint128 amount = _limitOrder(key, swapParams, orderHookData);
-        // TODO: Add mint for the user to mintERC1155
+        // TODO: Add mint for the user to mintERC1155 as receipt
+
         return (
             BaseHook.beforeSwap.selector,
             toBeforeSwapDelta(int128(amount), 0), // ?? check this back if it reverts
@@ -127,6 +192,7 @@ contract OrderBookHookV4 is BaseHook {
             uint128(amount)
         );
 
+        // TODO: Change the bellow Currency to be dynamic
         _trade(
             Currency.unwrap(key.currency0), // ETH
             Currency.unwrap(key.currency1), // Tokens
