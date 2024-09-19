@@ -153,7 +153,7 @@ contract OrderBookHookV4Test is Test, Helpers, Fixtures {
             100000,
             address(trader1), // It can be the swaprouter, PoolManager, contractHook
             true,
-            2
+            2 // @param n The maximum number of orders to match in the orderbook
         );
 
         // bytes memory hookData = new bytes(0);

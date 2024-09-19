@@ -16,9 +16,8 @@ interface IEngine {
         uint256 quoteAmount,
         bool isMaker,
         uint32 n,
-        uint32 uid,
         address recipient
-    ) external;
+    ) external returns (uint256 makePrice, uint256 placed, uint32 id);
 
     function marketSell(
         address base,
@@ -26,23 +25,22 @@ interface IEngine {
         uint256 baseAmount,
         bool isMaker,
         uint32 n,
-        uint32 uid,
         address recipient
-    ) external;
+    ) external returns (uint256 makePrice, uint256 placed, uint32 id);
 
     function marketBuyETH(
         address base,
         bool isMaker,
         uint32 n,
-        uint32 uid
-    ) external payable returns (bool);
+        address recipient
+    ) external payable returns (uint256 makePrice, uint256 placed, uint32 id);
 
     function marketSellETH(
         address quote,
         bool isMaker,
         uint32 n,
-        uint32 uid
-    ) external payable returns (bool);
+        address recipient
+    ) external payable returns (uint256 makePrice, uint256 placed, uint32 id);
 
     function limitBuy(
         address base,

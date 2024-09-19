@@ -143,6 +143,71 @@ contract OrderBookHookV4 is BaseHook {
         address tokenOut = swapParams.zeroForOne
             ? Currency.unwrap(key.currency1)
             : Currency.unwrap(key.currency0);
+
+        // Attemp to match the order in the orderBook
+
+        /** Trading pair e.g "ETH/USDC"
+            First We check which token we are trading if I'm trading ETH then 
+            I should check if swapParams is zeroForOne means that we are selling ETH for quote
+            ETH is quote
+            else of swapPrams is OneForZero mtans that we are buyying ETH
+            Check type of tokens => if ETH => are we selling ZeroForOne => are we buying OneForZero;
+         */
+        if (tokenIn == address(0)) {
+            // If trading ETH
+            if (swapParams.zeroForOne) {
+                // base is ETH and Quote is ERC and we are selling ETH
+                (makePrice, matchedAmount, orderId) = IEngine(
+                    payable(matchingEngine)
+                ).marketSellETH{value: amount}(
+                    tokenOut, // address of the quote asset
+                    isMaker,
+                    n,
+                    recipient
+                );
+            } else {
+                // oneForZero => ERC is the base and ETH is quote we are buying ETH
+                (makePrice, matchedAmount, orderId) = IEngine(
+                    payable(matchingEngine)
+                ).marketBuyETH{value: amount}(
+                    tokenIn, // address of the base (ETH in this case)
+                    isMaker,
+                    n,
+                    recipient
+                );
+            }
+        } else {
+            // trading ERC20
+            // approve matching engine to send trade tokens on the hooks contract behalf
+            // Note: Check the case when the matchingEngine doesn't match the total amount approved in the
+            // orderbook we should reset the approval to zero(if needed) (use increaseAllowance)
+
+            IERC20(tokenIn).approve(address(matchingEngine), amount);
+            // NOTE Check when tokenIn or out is WETH WETH(ERC20)
+            if (swapParams.zeroForOne) {
+                // USDC/LINK
+                (makePrice, matchedAmount, orderId) = IEngine(matchingEngine)
+                    .marketSell(
+                        tokenIn,
+                        tokenOut,
+                        amount,
+                        isMaker,
+                        n,
+                        recipient
+                    );
+            } else {
+                // Selling tokenIn for tokens Out
+                (makePrice, matchedAmount, orderId) = IEngine(matchingEngine)
+                    .marketBuy(
+                        tokenIn,
+                        tokenOut,
+                        amount,
+                        isMaker,
+                        n,
+                        recipient
+                    );
+            }
+        }
     }
 
     // TODO Modifier where only poolManager can call this beforeSwap.
