@@ -151,7 +151,7 @@ contract OrderBookHookV4Test is Test, Helpers, Fixtures {
         bytes memory hookData = hook.getHookData(
             2000e8, // => limitPrice in the order book were 1ETH = 2000 USDC
             100000,
-            address(trader1), // It can be the swaprouter, PoolManager, contractHook
+            address(hook), // set the address of the hook as the recipient addeess // It can be the swaprouter, PoolManager, contractHook
             true,
             2 // @param n The maximum number of orders to match in the orderbook
         );

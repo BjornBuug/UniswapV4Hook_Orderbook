@@ -438,6 +438,7 @@ contract MatchingEngine is Initializable, ReentrancyGuard, AccessControl {
                 IOrderbook(orderData.orderbook).setLmp(orderData.askHead);
                 emit NewMarketPrice(orderData.orderbook, orderData.askHead);
             }
+
             emit OrderPlaced(
                 orderData.orderbook,
                 orderData.makeId,

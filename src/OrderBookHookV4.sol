@@ -93,7 +93,7 @@ contract OrderBookHookV4 is BaseHook {
         address,
         PoolKey calldata key,
         IPoolManager.SwapParams calldata swapParams,
-        BalanceDelta delta,
+        BalanceDelta swapDelta,
         bytes calldata orderHookData
     ) external override returns (bytes4, int128) {
         // Check if the orderOrderHookData is not empty [x]
@@ -102,7 +102,7 @@ contract OrderBookHookV4 is BaseHook {
         // Decode the the orderHook data to retrive te order details
         (
             uint256 limitPrice,
-            uint256 amount,
+            uint256 orderBookAmount,
             address recipient,
             bool isMaker,
             uint32 n
@@ -111,11 +111,23 @@ contract OrderBookHookV4 is BaseHook {
                 (uint256, uint256, address, bool, uint32)
             );
 
+        // uint256 matchedAmount;
+
+        _matchOrder(
+            key,
+            swapParams,
+            limitPrice,
+            orderBookAmount,
+            recipient,
+            isMaker,
+            n
+        );
+
         // Create a function to to match the order
 
         // Calculate the delta for the unspecified currency
 
-        return (BaseHook.afterSwap.selector, 0);
+        return (BaseHook.afterSwap.selector, swapDelta);
     }
 
     /**
@@ -134,7 +146,7 @@ contract OrderBookHookV4 is BaseHook {
         address recipient,
         bool isMaker,
         uint32 n
-    ) private returns (uint256 matchedAmount, uint256 outputAmount) {
+    ) private returns (uint256 matchedAmount) {
         // Determine which tokens is being traded [x]
         address tokenIn = swapParams.zeroForOne
             ? Currency.unwrap(key.currency0)
@@ -150,31 +162,39 @@ contract OrderBookHookV4 is BaseHook {
             First We check which token we are trading if I'm trading ETH then 
             I should check if swapParams is zeroForOne means that we are selling ETH for quote
             ETH is quote
-            else of swapPrams is OneForZero mtans that we are buyying ETH
+            else of swapPrams is OneForZero means that we are buying ETH
             Check type of tokens => if ETH => are we selling ZeroForOne => are we buying OneForZero;
-         */
+        */
         if (tokenIn == address(0)) {
             // If trading ETH
             if (swapParams.zeroForOne) {
                 // base is ETH and Quote is ERC and we are selling ETH
-                (makePrice, matchedAmount, orderId) = IEngine(
-                    payable(matchingEngine)
-                ).marketSellETH{value: amount}(
-                    tokenOut, // address of the quote asset
-                    isMaker,
-                    n,
-                    recipient
-                );
+                (
+                    uint256 makePrice,
+                    uint256 matchedAmount,
+                    uint32 orderId
+                ) = IEngine(payable(matchingEngine)).marketSellETH{
+                        value: amount
+                    }(
+                        tokenOut, // address of the quote asset
+                        isMaker,
+                        n,
+                        recipient
+                    );
             } else {
                 // oneForZero => ERC is the base and ETH is quote we are buying ETH
-                (makePrice, matchedAmount, orderId) = IEngine(
-                    payable(matchingEngine)
-                ).marketBuyETH{value: amount}(
-                    tokenIn, // address of the base (ETH in this case)
-                    isMaker,
-                    n,
-                    recipient
-                );
+                (
+                    uint256 makePrice,
+                    uint256 matchedAmount,
+                    uint32 orderId
+                ) = IEngine(payable(matchingEngine)).marketBuyETH{
+                        value: amount
+                    }(
+                        tokenIn, // address of the base (ETH in this case)
+                        isMaker,
+                        n,
+                        recipient
+                    );
             }
         } else {
             // trading ERC20
@@ -185,23 +205,25 @@ contract OrderBookHookV4 is BaseHook {
             IERC20(tokenIn).approve(address(matchingEngine), amount);
             // NOTE Check when tokenIn or out is WETH WETH(ERC20)
             if (swapParams.zeroForOne) {
-                // USDC/LINK
-                (makePrice, matchedAmount, orderId) = IEngine(matchingEngine)
-                    .marketSell(
-                        tokenIn,
-                        tokenOut,
-                        amount,
+                // USDC/LINK pair, selling USDC to get LINK
+                (uint256 makePrice, uint256 matchedAmount, uint32 id) = IEngine(
+                    matchingEngine
+                ).marketSell(
+                        tokenIn, // USDC (what we're selling)
+                        tokenOut, // LINK (what we're buying)
+                        amount, // Amount of USDC to sell
                         isMaker,
                         n,
                         recipient
                     );
             } else {
-                // Selling tokenIn for tokens Out
-                (makePrice, matchedAmount, orderId) = IEngine(matchingEngine)
-                    .marketBuy(
-                        tokenIn,
-                        tokenOut,
-                        amount,
+                // LINK/USDC pair, buying USDC with LINK
+                (uint256 makePrice, uint256 matchedAmount, uint32 id) = IEngine(
+                    matchingEngine
+                ).marketBuy(
+                        tokenIn, // LINK (what we're selling)
+                        tokenOut, // USDC (what we're buying)
+                        amount, // Amount of LINK to spend
                         isMaker,
                         n,
                         recipient
