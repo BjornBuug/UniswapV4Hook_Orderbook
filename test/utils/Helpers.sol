@@ -2,6 +2,8 @@
 pragma solidity >=0.8.24;
 
 import {Test} from "forge-std/Test.sol";
+import {IERC20Mock} from "./IERC20Mock.sol";
+import {Constants} from "v4-core/test/utils/Constants.sol";
 
 abstract contract Helpers is Test {
     bytes32 internal nextUser = keccak256(abi.encodePacked("user address"));
@@ -24,6 +26,18 @@ abstract contract Helpers is Test {
         }
 
         return users;
+    }
+
+    function approveCurrencies(
+        address token,
+        address trader,
+        address[3] memory _toApprove
+    ) public {
+        for (uint256 i = 0; i < _toApprove.length; i++) {
+            vm.startPrank(trader);
+            IERC20Mock(token).approve(_toApprove[i], Constants.MAX_UINT256);
+            vm.stopPrank();
+        }
     }
 
     function addUsers(

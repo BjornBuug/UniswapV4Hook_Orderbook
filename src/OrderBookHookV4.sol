@@ -123,11 +123,7 @@ contract OrderBookHookV4 is BaseHook {
             n
         );
 
-        // Create a function to to match the order
-
-        // Calculate the delta for the unspecified currency
-
-        return (BaseHook.afterSwap.selector, swapDelta);
+        return (BaseHook.afterSwap.selector, int128(0));
     }
 
     /**
@@ -169,32 +165,22 @@ contract OrderBookHookV4 is BaseHook {
             // If trading ETH
             if (swapParams.zeroForOne) {
                 // base is ETH and Quote is ERC and we are selling ETH
-                (
-                    uint256 makePrice,
-                    uint256 matchedAmount,
-                    uint32 orderId
-                ) = IEngine(payable(matchingEngine)).marketSellETH{
-                        value: amount
-                    }(
-                        tokenOut, // address of the quote asset
-                        isMaker,
-                        n,
-                        recipient
-                    );
+                (, matchedAmount, ) = IEngine(payable(matchingEngine))
+                    .marketSellETH{value: amount}(
+                    tokenOut, // address of the quote asset
+                    isMaker,
+                    n,
+                    recipient
+                );
             } else {
                 // oneForZero => ERC is the base and ETH is quote we are buying ETH
-                (
-                    uint256 makePrice,
-                    uint256 matchedAmount,
-                    uint32 orderId
-                ) = IEngine(payable(matchingEngine)).marketBuyETH{
-                        value: amount
-                    }(
-                        tokenIn, // address of the base (ETH in this case)
-                        isMaker,
-                        n,
-                        recipient
-                    );
+                (, matchedAmount, ) = IEngine(payable(matchingEngine))
+                    .marketBuyETH{value: amount}(
+                    tokenIn, // address of the base (ETH in this case)
+                    isMaker,
+                    n,
+                    recipient
+                );
             }
         } else {
             // trading ERC20
@@ -206,28 +192,24 @@ contract OrderBookHookV4 is BaseHook {
             // NOTE Check when tokenIn or out is WETH WETH(ERC20)
             if (swapParams.zeroForOne) {
                 // USDC/LINK pair, selling USDC to get LINK
-                (uint256 makePrice, uint256 matchedAmount, uint32 id) = IEngine(
-                    matchingEngine
-                ).marketSell(
-                        tokenIn, // USDC (what we're selling)
-                        tokenOut, // LINK (what we're buying)
-                        amount, // Amount of USDC to sell
-                        isMaker,
-                        n,
-                        recipient
-                    );
+                (, matchedAmount, ) = IEngine(matchingEngine).marketSell(
+                    tokenIn, // USDC (what we're selling)
+                    tokenOut, // LINK (what we're buying)
+                    amount, // Amount of USDC to sell
+                    isMaker,
+                    n,
+                    recipient
+                );
             } else {
                 // LINK/USDC pair, buying USDC with LINK
-                (uint256 makePrice, uint256 matchedAmount, uint32 id) = IEngine(
-                    matchingEngine
-                ).marketBuy(
-                        tokenIn, // LINK (what we're selling)
-                        tokenOut, // USDC (what we're buying)
-                        amount, // Amount of LINK to spend
-                        isMaker,
-                        n,
-                        recipient
-                    );
+                (, matchedAmount, ) = IEngine(matchingEngine).marketBuy(
+                    tokenIn, // LINK (what we're selling)
+                    tokenOut, // USDC (what we're buying)
+                    amount, // Amount of LINK to spend
+                    isMaker,
+                    n,
+                    recipient
+                );
             }
         }
     }

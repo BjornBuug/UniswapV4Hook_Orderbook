@@ -35,9 +35,15 @@ contract OrderBookHookV4Test is Test, Helpers, Fixtures {
     OrderBookHookV4 hook;
     address UniToken;
     IERC20Mock UNITOKEN;
-    Currency tokenCurrency;
+
+    address usdcToken;
+    IERC20Mock USDCTOKEN;
+
+    Currency tokenCureency1;
+    Currency tokenCurrency0;
 
     address public trader1;
+    address public trader2;
     address public admin;
     address[] public users;
 
@@ -50,8 +56,12 @@ contract OrderBookHookV4Test is Test, Helpers, Fixtures {
         users = Helpers.createUsers(4);
         trader1 = users[0];
         admin = users[1];
+        trader2 = users[2];
+
         vm.label(trader1, "Trader1");
+        vm.label(trader2, "Trader2");
         vm.label(admin, "Admin");
+
         vm.label(address(address(this)), "Test Contract");
 
         // Deploy the Wrapped ETH
@@ -79,16 +89,35 @@ contract OrderBookHookV4Test is Test, Helpers, Fixtures {
         // creates the pool manager, utility routers, and test tokens
         deployFreshManagerAndRouters();
 
-        // Deploy ERC20 tokens
+        // create a fixed size array to push the address that we want to approve
+        address[3] memory addressesToApprove = [
+            address(swapRouter),
+            address(modifyLiquidityRouter),
+            address(matchingEngine)
+        ];
+
+        //****************************************************************/
+        // Deploy ERC20 Uniwap tokens
         UniToken = address(new MockERC20("UNISWAP", "UNI", 18));
         UNITOKEN = IERC20Mock(UniToken);
 
         // wrap the tokens to currency type
-        tokenCurrency = Currency.wrap(address(UniToken));
+        tokenCureency1 = Currency.wrap(address(UniToken));
         Currency ethCurrency = Currency.wrap(address(0));
 
         UNITOKEN.mint(address(this), 1_000 ether);
         UNITOKEN.mint(trader1, 1_0000 ether);
+        UNITOKEN.mint(trader2, 1_0000 ether);
+
+        //****************************************************************/
+        usdcToken = address(new MockERC20("Tether", "USDC", 8));
+        USDCTOKEN = IERC20Mock(usdcToken);
+
+        // Wrap USDC token to currency type
+        tokenCurrency0 = Currency.wrap(address(usdcToken));
+
+        USDCTOKEN.mint(trader1, 1_000 ether);
+        USDCTOKEN.mint(trader2, 1_000 ether);
 
         // Deploy the hook to an address with the correct flags
         address flags = address(
@@ -112,38 +141,44 @@ contract OrderBookHookV4Test is Test, Helpers, Fixtures {
         );
         hook = OrderBookHookV4(payable(flags)); // @audit-info check payable if it revert
 
+        approveCurrencies(UniToken, address(this), addressesToApprove);
+        approveCurrencies(usdcToken, address(this), addressesToApprove);
+
+        approveCurrencies(UniToken, trader1, addressesToApprove);
+        approveCurrencies(usdcToken, trader1, addressesToApprove);
+
+        approveCurrencies(UniToken, trader2, addressesToApprove);
+        approveCurrencies(usdcToken, trader2, addressesToApprove);
+
         // Approve Max amount of UNITOKEN to be spend by swap router and modifyliquidity router
         // address(this) approval
-        UNITOKEN.approve(address(swapRouter), type(uint256).max);
-        UNITOKEN.approve(address(modifyLiquidityRouter), type(uint256).max);
-        UNITOKEN.approve(address(matchingEngine), type(uint256).max);
+        // UNITOKEN.approve(address(swapRouter), type(uint256).max);
+        // UNITOKEN.approve(address(modifyLiquidityRouter), type(uint256).max);
+        // UNITOKEN.approve(address(matchingEngine), type(uint256).max);
 
-        // Traders Approval
-        vm.startPrank(trader1);
-        UNITOKEN.approve(address(swapRouter), type(uint256).max);
-        UNITOKEN.approve(address(modifyLiquidityRouter), type(uint256).max);
-        UNITOKEN.approve(address(matchingEngine), type(uint256).max);
-        vm.stopPrank();
-
-        // Initilize a pool
+        // vm.startPrank(trader1);
+        // UNITOKEN.approve(address(swapRouter), type(uint256).max);
+        // UNITOKEN.approve(address(modifyLiquidityRouter), type(uint256).max);
+        // UNITOKEN.approve(address(matchingEngine), type(uint256).max);
+        // vm.stopPrank();
+        // Initilize a pool with Unitoken as the base and usdcToken as the quote UNI/USDC
         (key, ) = initPool(
-            ethCurrency,
-            tokenCurrency,
+            tokenCurrency0,
+            tokenCureency1,
             hook,
             3000,
             SQRT_PRICE_1_1,
             ZERO_BYTES
         );
 
-        // add the above pair in the matching engine contract
+        // add the above pair UNI/USDC in the matching engine contract
         matchingEngine.addPair(
-            address(weth), // base
-            Currency.unwrap(tokenCurrency), // quote
-            2000e8 // 2000e8 // InitalMarket price were 1ETH = 2000 USDC
+            Currency.unwrap(tokenCurrency0) // base USDC
+            Currency.unwrap(tokenCureency1), // quote UNI
+            2000e8 // 2000e8 // InitalMarket price were 1 UNI = 1 USDC
         );
     }
 
-    // 10000000996006980940401 || 996006980940401
     // Include the case of swapping ERC20 for ERC20.
     // Use simple use case where we want to swap 2 token for 2 token
     function test_addLiquidityAndSwap() public {
@@ -151,7 +186,7 @@ contract OrderBookHookV4Test is Test, Helpers, Fixtures {
         bytes memory hookData = hook.getHookData(
             2000e8, // => limitPrice in the order book were 1ETH = 2000 USDC
             100000,
-            address(hook), // set the address of the hook as the recipient addeess // It can be the swaprouter, PoolManager, contractHook
+            address(trader1), // set the address of the hook as the recipient addeess // It can be the swaprouter, PoolManager, contractHook
             true,
             2 // @param n The maximum number of orders to match in the orderbook
         );
