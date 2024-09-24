@@ -299,6 +299,9 @@ contract OrderBookHookV4 is BaseHook {
         poolManager.take(currency, address(this), amount);
     }
 
+    // @audit-info the retuerned value from the orderbook is set with 8 decimals
+    // TODO: check the user balance before and after to make sure they received the correct amout
+    // or convert the balance to the correct decimals of the tokens.
     function _trade(
         address token0,
         address token1,
