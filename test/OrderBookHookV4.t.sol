@@ -120,12 +120,11 @@ contract OrderBookHookV4Test is Test, Helpers, Fixtures {
         DYDXTOKEN.mint(trader1, 1_000 ether);
         DYDXTOKEN.mint(trader2, 1_000 ether);
 
+        // TODO: Add Hooks.AFTER_SWAP_FLAG |
         // Deploy the hook to an address with the correct flags
         address flags = address(
             uint160(
-                Hooks.BEFORE_SWAP_FLAG |
-                    Hooks.AFTER_SWAP_FLAG |
-                    Hooks.BEFORE_SWAP_RETURNS_DELTA_FLAG
+                Hooks.BEFORE_SWAP_FLAG | Hooks.BEFORE_SWAP_RETURNS_DELTA_FLAG
             ) ^ (0x4444 << 144) // Namespace the hook to avoid collisions
         );
 
@@ -164,7 +163,7 @@ contract OrderBookHookV4Test is Test, Helpers, Fixtures {
         // vm.stopPrank();
         // Initilize a pool with Unitoken as the base and dydxToken as the quote UNI/DYDX
         (key, ) = initPool(
-            tokenCurrency0,
+            ethCurrency,
             tokenCureency1,
             hook,
             3000,
@@ -174,7 +173,7 @@ contract OrderBookHookV4Test is Test, Helpers, Fixtures {
 
         // add the above pair UNI/DYDX in the matching engine contract
         matchingEngine.addPair(
-            Currency.unwrap(tokenCurrency0), // base DYDX
+            address(weth), // base DYDX
             Currency.unwrap(tokenCureency1), // quote UNI
             2000e8 // 2000e8 // InitalMarket price were 1 UNI = 1 DYDX
         );
@@ -183,7 +182,7 @@ contract OrderBookHookV4Test is Test, Helpers, Fixtures {
     // Include the case of swapping ERC20 for ERC20.
     // Use simple use case where we want to swap 2 token for 2 token
     function test_addLiquidityAndSwap() public {
-        // // Set no referrer in the hook data
+        // // // Set no referrer in the hook data
         // bytes memory hookData = hook.getHookData(
         //     10e8, // => limitPrice in the order book were (1 UNI per DYDX)
         //     5e18, // => The amount of base asset to be used for the limit sell order
@@ -213,6 +212,8 @@ contract OrderBookHookV4Test is Test, Helpers, Fixtures {
             testContractBalTokenBefore
         );
 
+        // NOTE: Provide liquidity with 0.003 ether and the rest of 1 rest in UNITOKEN
+        // TODO: do the same for ERC20 tokens (getAmountsForLiquidity)
         // Note: Address (this provide liquidity for it own funds)
         // getAmountsForLiquidity
         // How we landed on 0.003 ether here is based on computing value of x and y given
@@ -220,12 +221,12 @@ contract OrderBookHookV4Test is Test, Helpers, Fixtures {
         // This is done by computing x and y from the equation shown in Ticks and Q64.96 Numbers lesson
         // View the full code for this lesson on GitHub which has additional comments
         // showing the exact computation and a Python script to do that calculation for you
-        modifyLiquidityRouter.modifyLiquidity(
+        modifyLiquidityRouter.modifyLiquidity{value: 0.003 ether}(
             key,
             IPoolManager.ModifyLiquidityParams({
                 tickLower: -60,
                 tickUpper: 60,
-                liquidityDelta: 201e8, // we provide 10 as liquidity to the pool(key)
+                liquidityDelta: 1 ether, // we provide 10 as liquidity to the pool(key)
                 salt: 0
             }),
             new bytes(0)
@@ -233,64 +234,84 @@ contract OrderBookHookV4Test is Test, Helpers, Fixtures {
 
         // Hook Orderbook data for trader1
         bytes memory trader1HookData = hook.getHookData(
-            10e8, // => limitPrice in the order book were (1 UNI per DYDX)
-            5e18, // => The amount of base asset to be used for the limit sell order
+            // TODO: Change the price to the current price if it's revert
+            20e8, // => limitPrice in the order book were (1 UNI per DYDX)
+            100000, // => The amount of base asset to be used for the limit sell order
             address(trader1), // set the address of the hook as the recipient addeess // It can be the swaprouter, PoolManager, contractHook
             true,
             2 // @param n The maximum number of orders to match in the orderbook
         );
 
-        // Now we swap
-        // We will swap 0.001 ether for tokens
-        // We should get 20% of 0.001 * 10**18 points
-        // = 2 * 10**14
+        // // Now we swap
+        // // We will swap 0.001 ether for tokens
+        // // We should get 20% of 0.001 * 10**18 points
+        // // = 2 * 10**14
+
+        // CASE 1: PLACED ORDER
+        // Trader1 place an order in the orderbook throught the hookData to sell DYDX and received UNI (DYDX/UNI)
+        // with 5 DYDX throught AMM & 5 DYDX throught the orderbook => total = 10 DYDX for UNISWAP token
+        // vm.startPrank(trader1);
+        // swapRouter.swap(
+        //     key,
+        //     IPoolManager.SwapParams({
+        //         zeroForOne: true,
+        //         amountSpecified: -5e18, // negative => expect the exact amount of input tokens
+        //         sqrtPriceLimitX96: TickMath.MIN_SQRT_PRICE + 1
+        //     }),
+        //     PoolSwapTest.TestSettings({
+        //         takeClaims: false, // false = ERC20 : true: ERC6909s
+        //         settleUsingBurn: false
+        //     }),
+        //     new bytes(0)
+        // );
+        // vm.stopPrank();
 
         // CASE 1: PLACED ORDER
         // Trader1 place an order in the orderbook throught the hookData to sell DYDX and received UNI (DYDX/UNI)
         // with 5 DYDX throught AMM & 5 DYDX throught the orderbook => total = 10 DYDX for UNISWAP token
         vm.startPrank(trader1);
-        swapRouter.swap(
+        swapRouter.swap{value: 0.001 ether}(
             key,
             IPoolManager.SwapParams({
                 zeroForOne: true,
-                amountSpecified: -5e18, // negative => expect the exact amount of input tokens
+                amountSpecified: -0.001 ether, // negative => expect the exact amount of input tokens
                 sqrtPriceLimitX96: TickMath.MIN_SQRT_PRICE + 1
             }),
             PoolSwapTest.TestSettings({
-                takeClaims: false, // false = ERC20 : true: ERC6909s
+                takeClaims: true, // false = ERC20 : true: ERC6909s
                 settleUsingBurn: false
             }),
             trader1HookData
         );
         vm.stopPrank();
 
-        // Hook Orderbook data for trader2 to matche trader1 palced order with marketBuy
-        bytes memory trader2HookData = hook.getHookData(
-            10e8, // => limitPrice in the order book were (1 UNI per DYDX)
-            5e18, // => The amount of quote asset to be used for the market buy order
-            address(trader2), // set the address of the hook as the recipient addeess // It can be the swaprouter, PoolManager, contractHook
-            true,
-            2 // @param n The maximum number of orders to match in the orderbook
-        );
+        // // Hook Orderbook data for trader2 to matche trader1 palced order with marketBuy
+        // bytes memory trader2HookData = hook.getHookData(
+        //     10e8, // => limitPrice in the order book were (1 UNI per DYDX)
+        //     5e18, // => The amount of quote asset to be used for the market buy order
+        //     address(trader2), // set the address of the hook as the recipient addeess // It can be the swaprouter, PoolManager, contractHook
+        //     true,
+        //     2 // @param n The maximum number of orders to match in the orderbook
+        // );
 
-        // CASE 2: MATCHED ORDER
-        // Trader2 place an order in the orderbook throught the hookData to buy DYDX and sell UNI (DYDX/UNI)
-        // with 5 UNI throught AMM & 5 UNI throught the orderbook => total = 10 UNI for 10 DYDXTOKEN token
-        vm.startPrank(trader2);
-        swapRouter.swap(
-            key,
-            IPoolManager.SwapParams({
-                zeroForOne: false,
-                amountSpecified: -5e18, // negative => expect the exact amount of input tokens
-                sqrtPriceLimitX96: TickMath.MIN_SQRT_PRICE + 1
-            }),
-            PoolSwapTest.TestSettings({
-                takeClaims: false, // false = ERC20 : true: ERC6909s
-                settleUsingBurn: false
-            }),
-            trader2HookData
-        );
-        vm.stopPrank();
+        // // CASE 2: MATCHED ORDER
+        // // Trader2 place an order in the orderbook throught the hookData to buy DYDX and sell UNI (DYDX/UNI)
+        // // with 5 UNI throught AMM & 5 UNI throught the orderbook => total = 10 UNI for 10 DYDXTOKEN token
+        // vm.startPrank(trader2);
+        // swapRouter.swap(
+        //     key,
+        //     IPoolManager.SwapParams({
+        //         zeroForOne: false,
+        //         amountSpecified: -5e18, // negative => expect the exact amount of input tokens
+        //         sqrtPriceLimitX96: TickMath.MIN_SQRT_PRICE + 1
+        //     }),
+        //     PoolSwapTest.TestSettings({
+        //         takeClaims: false, // false = ERC20 : true: ERC6909s
+        //         settleUsingBurn: false
+        //     }),
+        //     trader2HookData
+        // );
+        // vm.stopPrank();
 
         // uint256 traderBalTokenAfter = UNITOKEN.balanceOf(address(trader1));
         // uint256 hookBalTokenAfter = UNITOKEN.balanceOf(address(hook));

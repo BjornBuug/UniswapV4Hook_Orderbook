@@ -53,7 +53,7 @@ contract OrderBookHookV4 is BaseHook {
                 beforeRemoveLiquidity: false,
                 afterRemoveLiquidity: false,
                 beforeSwap: true,
-                afterSwap: true,
+                afterSwap: false, // set this to true
                 beforeDonate: false,
                 afterDonate: false,
                 beforeSwapReturnDelta: true, // true
@@ -63,7 +63,7 @@ contract OrderBookHookV4 is BaseHook {
             });
     }
 
-    function toBeforeSwapDelta(
+    function _toBeforeSwapDelta(
         int128 deltaSpecified,
         int128 deltaUnspecified
     ) internal pure returns (BeforeSwapDelta beforeSwapDelta) {
@@ -79,52 +79,52 @@ contract OrderBookHookV4 is BaseHook {
         }
     }
 
-    // function getHookData(
-    //     uint256 limitPrice,
-    //     uint256 amount,
-    //     address recipient,
-    //     bool isMaker,
-    //     uint32 n
-    // ) public pure returns (bytes memory) {
-    //     return abi.encode(limitPrice, amount, recipient, isMaker, n);
-    // }
-
-    function afterSwap(
-        address,
-        PoolKey calldata key,
-        IPoolManager.SwapParams calldata swapParams,
-        BalanceDelta swapDelta,
-        bytes calldata orderHookData
-    ) external override returns (bytes4, int128) {
-        // Check if the orderOrderHookData is not empty [x]
-        if (orderHookData.length == 0) return (BaseHook.afterSwap.selector, 0);
-
-        // Decode the the orderHook data to retrive te order details
-        (
-            uint256 limitPrice,
-            uint256 orderBookAmount,
-            address recipient,
-            bool isMaker,
-            uint32 n
-        ) = abi.decode(
-                orderHookData,
-                (uint256, uint256, address, bool, uint32)
-            );
-
-        // uint256 matchedAmount;
-
-        _matchOrder(
-            key,
-            swapParams,
-            limitPrice,
-            orderBookAmount,
-            recipient,
-            isMaker,
-            n
-        );
-
-        return (BaseHook.afterSwap.selector, int128(0));
+    function getHookData(
+        uint256 limitPrice,
+        uint256 amount,
+        address recipient,
+        bool isMaker,
+        uint32 n
+    ) public pure returns (bytes memory) {
+        return abi.encode(limitPrice, amount, recipient, isMaker, n);
     }
+
+    // function afterSwap(
+    //     address,
+    //     PoolKey calldata key,
+    //     IPoolManager.SwapParams calldata swapParams,
+    //     BalanceDelta swapDelta,
+    //     bytes calldata orderHookData
+    // ) external override returns (bytes4, int128) {
+    //     // Check if the orderOrderHookData is not empty [x]
+    //     if (orderHookData.length == 0) return (BaseHook.afterSwap.selector, 0);
+
+    //     // Decode the the orderHook data to retrive te order details
+    //     (
+    //         uint256 limitPrice,
+    //         uint256 orderBookAmount,
+    //         address recipient,
+    //         bool isMaker,
+    //         uint32 n
+    //     ) = abi.decode(
+    //             orderHookData,
+    //             (uint256, uint256, address, bool, uint32)
+    //         );
+
+    //     // uint256 matchedAmount;
+
+    //     _matchOrder(
+    //         key,
+    //         swapParams,
+    //         limitPrice,
+    //         orderBookAmount,
+    //         recipient,
+    //         isMaker,
+    //         n
+    //     );
+
+    //     return (BaseHook.afterSwap.selector, int128(0));
+    // }
 
     /**
         struct SwapParams {
@@ -133,103 +133,103 @@ contract OrderBookHookV4 is BaseHook {
         uint160 sqrtPriceLimitX96;
     } */
 
-    // Returns the matched Amount, and output
-    function _matchOrder(
-        PoolKey calldata key,
-        IPoolManager.SwapParams calldata swapParams,
-        uint256 limitPrice,
-        uint256 amount,
-        address recipient,
-        bool isMaker,
-        uint32 n
-    ) private returns (uint256 matchedAmount) {
-        // Determine which tokens is being traded [x]
-        address tokenIn = swapParams.zeroForOne
-            ? Currency.unwrap(key.currency0)
-            : Currency.unwrap(key.currency1);
+    // // Returns the matched Amount, and output
+    // function _matchOrder(
+    //     PoolKey calldata key,
+    //     IPoolManager.SwapParams calldata swapParams,
+    //     uint256 limitPrice,
+    //     uint256 amount,
+    //     address recipient,
+    //     bool isMaker,
+    //     uint32 n
+    // ) private returns (uint256 matchedAmount) {
+    //     // Determine which tokens is being traded [x]
+    //     address tokenIn = swapParams.zeroForOne
+    //         ? Currency.unwrap(key.currency0)
+    //         : Currency.unwrap(key.currency1);
 
-        address tokenOut = swapParams.zeroForOne
-            ? Currency.unwrap(key.currency1)
-            : Currency.unwrap(key.currency0);
+    //     address tokenOut = swapParams.zeroForOne
+    //         ? Currency.unwrap(key.currency1)
+    //         : Currency.unwrap(key.currency0);
 
-        // Attemp to match the order in the orderBook
+    //     // Attemp to match the order in the orderBook
 
-        /** Trading pair e.g "ETH/USDC"
-            First We check which token we are trading if I'm trading ETH then 
-            I should check if swapParams is zeroForOne means that we are selling ETH for quote
-            ETH is quote
-            else of swapPrams is OneForZero means that we are buying ETH
-            Check type of tokens => if ETH => are we selling ZeroForOne => are we buying OneForZero;
-        */
-        if (tokenIn == address(0)) {
-            // If trading ETH
-            if (swapParams.zeroForOne) {
-                // base is ETH and Quote is ERC and we are selling ETH
-                (, matchedAmount, ) = IEngine(payable(matchingEngine))
-                    .marketSellETH{value: amount}(
-                    tokenOut, // address of the quote asset
-                    isMaker,
-                    n,
-                    recipient
-                );
-            } else {
-                // oneForZero => ERC is the base and ETH is quote we are buying ETH
-                (, matchedAmount, ) = IEngine(payable(matchingEngine))
-                    .marketBuyETH{value: amount}(
-                    tokenIn, // address of the base (ETH in this case)
-                    isMaker,
-                    n,
-                    recipient
-                );
-            }
-        } else {
-            // trading ERC20
-            // approve matching engine to send trade tokens on the hooks contract behalf
-            // Note: Check the case when the matchingEngine doesn't match the total amount approved in the
-            // orderbook we should reset the approval to zero(if needed) (use increaseAllowance)
+    //     /** Trading pair e.g "ETH/USDC"
+    //         First We check which token we are trading if I'm trading ETH then
+    //         I should check if swapParams is zeroForOne means that we are selling ETH for quote
+    //         ETH is quote
+    //         else of swapPrams is OneForZero means that we are buying ETH
+    //         Check type of tokens => if ETH => are we selling ZeroForOne => are we buying OneForZero;
+    //     */
+    //     if (tokenIn == address(0)) {
+    //         // If trading ETH
+    //         if (swapParams.zeroForOne) {
+    //             // base is ETH and Quote is ERC and we are selling ETH
+    //             (, matchedAmount, ) = IEngine(payable(matchingEngine))
+    //                 .marketSellETH{value: amount}(
+    //                 tokenOut, // address of the quote asset
+    //                 isMaker,
+    //                 n,
+    //                 recipient
+    //             );
+    //         } else {
+    //             // oneForZero => ERC is the base and ETH is quote we are buying ETH
+    //             (, matchedAmount, ) = IEngine(payable(matchingEngine))
+    //                 .marketBuyETH{value: amount}(
+    //                 tokenIn, // address of the base (ETH in this case)
+    //                 isMaker,
+    //                 n,
+    //                 recipient
+    //             );
+    //         }
+    //     } else {
+    //         // trading ERC20
+    //         // approve matching engine to send trade tokens on the hooks contract behalf
+    //         // Note: Check the case when the matchingEngine doesn't match the total amount approved in the
+    //         // orderbook we should reset the approval to zero(if needed) (use increaseAllowance)
 
-            IERC20(tokenIn).approve(address(matchingEngine), amount);
-            // NOTE Check when tokenIn or out is WETH WETH(ERC20)
-            if (swapParams.zeroForOne) {
-                // USDC/LINK pair, selling USDC to get LINK
-                (, matchedAmount, ) = IEngine(matchingEngine).marketSell(
-                    tokenIn, // USDC (what we're selling)
-                    tokenOut, // LINK (what we're buying)
-                    amount, // Amount of USDC to sell
-                    isMaker,
-                    n,
-                    recipient
-                );
-            } else {
-                // LINK/USDC pair, buying USDC with LINK
-                (, matchedAmount, ) = IEngine(matchingEngine).marketBuy(
-                    tokenIn, // LINK (what we're selling)
-                    tokenOut, // USDC (what we're buying)
-                    amount, // Amount of LINK to spend
-                    isMaker,
-                    n,
-                    recipient
-                );
-            }
-        }
-    }
+    //         IERC20(tokenIn).approve(address(matchingEngine), amount);
+    //         // NOTE Check when tokenIn or out is WETH WETH(ERC20)
+    //         if (swapParams.zeroForOne) {
+    //             // USDC/LINK pair, selling USDC to get LINK
+    //             (, matchedAmount, ) = IEngine(matchingEngine).marketSell(
+    //                 tokenIn, // USDC (what we're selling)
+    //                 tokenOut, // LINK (what we're buying)
+    //                 amount, // Amount of USDC to sell
+    //                 isMaker,
+    //                 n,
+    //                 recipient
+    //             );
+    //         } else {
+    //             // LINK/USDC pair, buying USDC with LINK
+    //             (, matchedAmount, ) = IEngine(matchingEngine).marketBuy(
+    //                 tokenIn, // LINK (what we're selling)
+    //                 tokenOut, // USDC (what we're buying)
+    //                 amount, // Amount of LINK to spend
+    //                 isMaker,
+    //                 n,
+    //                 recipient
+    //             );
+    //         }
+    //     }
+    // }
 
-    // TODO Modifier where only poolManager can call this beforeSwap.
+    // // TODO Modifier where only poolManager can call this beforeSwap.
     function beforeSwap(
         address,
         PoolKey calldata key,
         IPoolManager.SwapParams calldata swapParams,
         bytes calldata orderHookData
     ) external override returns (bytes4, BeforeSwapDelta, uint24) {
-        if (orderHookData.length == 0)
-            return (BaseHook.beforeSwap.selector, toBeforeSwapDelta(0, 0), 0);
+        // if (orderHookData.length == 0)
+        //     return (BaseHook.beforeSwap.selector, toBeforeSwapDelta(0, 0), 0);
 
         uint128 amount = _limitOrder(key, swapParams, orderHookData);
         // TODO: Add mint for the user to mintERC1155 as receipt
 
         return (
             BaseHook.beforeSwap.selector,
-            toBeforeSwapDelta(int128(amount), 0), // ?? check this back if it reverts
+            _toBeforeSwapDelta(int128(amount), 0),
             0
         );
     }
@@ -275,33 +275,23 @@ contract OrderBookHookV4 is BaseHook {
         return uint128(amount);
     }
 
-    function getHookData(
-        uint256 limitPrice,
-        uint256 amount,
-        address recipient,
-        bool isMaker,
-        uint32 n
-    ) public pure returns (bytes memory) {
-        return abi.encode(limitPrice, amount, recipient, isMaker, n);
-    }
-
     function _settle(Currency currency, uint128 amount) internal {
         // Transfer tokens to PM and let it know
         currency.transfer(address(poolManager), amount);
         poolManager.settle(); // Check this out
     }
 
-    // Transfer the user's deposited tokens from the PoolManager to be sold
-    // as part of a limit order
+    // // Transfer the user's deposited tokens from the PoolManager to be sold
+    // // as part of a limit order
     function _take(Currency currency, uint128 amount) internal {
         // Take tokens out of PM to our hook contract
         // What is the "take function"
         poolManager.take(currency, address(this), amount);
     }
 
-    // @audit-info the retuerned value from the orderbook is set with 8 decimals
-    // TODO: check the user balance before and after to make sure they received the correct amout
-    // or convert the balance to the correct decimals of the tokens.
+    // // // @audit-info the retuerned value from the orderbook is set with 8 decimals
+    // // // TODO: check the user balance before and after to make sure they received the correct amout
+    // // // or convert the balance to the correct decimals of the tokens.
     function _trade(
         address token0,
         address token1,
