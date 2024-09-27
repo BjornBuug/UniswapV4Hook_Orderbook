@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.24;
+pragma solidity 0.8.26;
 
 import "forge-std/Test.sol";
 import {console2} from "forge-std/console2.sol";
@@ -26,6 +26,34 @@ import {IPositionManager} from "v4-periphery/src/interfaces/IPositionManager.sol
 import {EasyPosm} from "./utils/EasyPosm.sol";
 import {Fixtures} from "./utils/Fixtures.sol";
 
+/**
+        PlacerOrder in the beforeSwap function, mintERC1155 receipt that represents the placedOrder.
+        in afterSwapOrder we matched the order if there is any 
+
+    */
+/**
+    Amount of ETH specified to swap throught swap = amountSpecified: -1000000000000000 [-1e15]
+    Amount of ETH specified throught the hookData is = amountSpecified: 100000 [1e5]
+    1- trader deposited throught 'swap' to the poolManager "-1000000000000000 [-1e15]"(0.001) ether 
+    2- trader specified in the hook data the amount that they which to trade on the orderbook using limitSell => 100000 [1e5]
+    the amount is then taken from the pool ETH/TOKEN pool in the poolManager and transfered to the Hook
+    3- The Hook place the order on behalf of the trader in the orderBook
+    4- Order placed the swap with delta.amount0() = -999999999900000 [-9.999e14], delta.amount1() = amount1: 996006980940401 [9.96e14]
+    NOTE: 
+    - The amount is taken from the inital deposit to the PoolManager "-1000000000000000 [-1e15]"(0.001) ether
+    - The trader in the OrderHook data only specified the amount they want to take from their inital deposit without specifying 
+    - When Swap is deducted using this hybrid sytem: The amount specified throught hooks data is deducted from from the totalAmount 
+    deposited by the user. deposited to the orderbook awaiting for match. once the order swap is conducted throuht swapRouter
+    is conducted using the remaning amount in the pool in our case:
+    // Order placed the swap with delta.amount0() = -999999999900000 [-9.999e14](minus orderbook amount), delta.amount1() = amount1: 996006980940401 [9.96e14]
+    decimals number: example 100_000 whcih appears in the log with 100000(1e5);
+    TODO: Investigate more how the matching engine handle decimals in this case or its just it just with ETH
+    but still try to do it with ERC20 tokens and don't specify decimals vs Specify decimals
+    TODO: Who should I set as receiver in the OrderHook data => From the flow of funds I think it's poolManager address
+    TODO: try to match the placed order using afterswap hook.
+
+
+ */
 contract OrderBookHookV4Test is Test, Helpers, Fixtures {
     using EasyPosm for IPositionManager;
     using PoolIdLibrary for PoolKey;
@@ -121,11 +149,11 @@ contract OrderBookHookV4Test is Test, Helpers, Fixtures {
         DYDXTOKEN.mint(trader2, 1_000 ether);
 
         // TODO: Add Hooks.AFTER_SWAP_FLAG |
+        // Hooks.BEFORE_SWAP_FLAG |
+        // | Hooks.BEFORE_SWAP_RETURNS_DELTA_FLAG
         // Deploy the hook to an address with the correct flags
         address flags = address(
-            uint160(
-                Hooks.BEFORE_SWAP_FLAG | Hooks.BEFORE_SWAP_RETURNS_DELTA_FLAG
-            ) ^ (0x4444 << 144) // Namespace the hook to avoid collisions
+            uint160(Hooks.AFTER_SWAP_FLAG) ^ (0x4444 << 144) // Namespace the hook to avoid collisions
         );
 
         bytes memory constructorArgs = abi.encode(
@@ -179,7 +207,7 @@ contract OrderBookHookV4Test is Test, Helpers, Fixtures {
         );
     }
 
-    // Include the case of swapping ERC20 for ERC20.
+    // TODO: use ERC20s Tokens case. Include the case of swapping ERC20 for ERC20.
     // Use simple use case where we want to swap 2 token for 2 token
     function test_addLiquidityAndSwap() public {
         // // // Set no referrer in the hook data
@@ -213,7 +241,7 @@ contract OrderBookHookV4Test is Test, Helpers, Fixtures {
         );
 
         // NOTE: Provide liquidity with 0.003 ether and the rest of 1 rest in UNITOKEN
-        // TODO: do the same for ERC20 tokens (getAmountsForLiquidity)
+        // TODO: ==> do the same for ERC20 tokens (getAmountsForLiquidity) <==
         // Note: Address (this provide liquidity for it own funds)
         // getAmountsForLiquidity
         // How we landed on 0.003 ether here is based on computing value of x and y given
@@ -235,7 +263,7 @@ contract OrderBookHookV4Test is Test, Helpers, Fixtures {
         // Hook Orderbook data for trader1
         bytes memory trader1HookData = hook.getHookData(
             // TODO: Change the price to the current price if it's revert
-            20e8, // => limitPrice in the order book were (1 UNI per DYDX)
+            2000e8, // => limitPrice in the order book were (1 UNI per DYDX)
             100000, // => The amount of base asset to be used for the limit sell order
             address(trader1), // set the address of the hook as the recipient addeess // It can be the swaprouter, PoolManager, contractHook
             true,
@@ -283,6 +311,33 @@ contract OrderBookHookV4Test is Test, Helpers, Fixtures {
             }),
             trader1HookData
         );
+        vm.stopPrank();
+
+        bytes memory trader2HookData = hook.getHookData(
+            // TODO: Change the price to the current price if it's revert
+            2000e8, // => limitPrice in the order book were (1 UNI per DYDX)
+            1782000000, // Amount of UNI to swap (178,200,000 * 10^8) for 90% of ETH in the orderbook // @audit-info this might be the reason for revert as it include decimals
+            address(trader2), // set the address of the hook as the recipient addeess // It can be the swaprouter, PoolManager, contractHook
+            false, // @audit-info set this to true.
+            1 // @param n The maximum number of orders to match in the orderbook
+        );
+
+        // Trader2 matched the orderSwap Tokens for ETH
+        vm.startPrank(trader2);
+        swapRouter.swap(
+            key,
+            IPoolManager.SwapParams({
+                zeroForOne: false,
+                amountSpecified: 4782000000, // I need to figout out how of token will fillhout the trader1 place order then put inside the orderhookData
+                sqrtPriceLimitX96: TickMath.MAX_SQRT_PRICE - 1 // For a one-for-zero swap
+            }),
+            PoolSwapTest.TestSettings({
+                takeClaims: true, // false = ERC20 : true: ERC6909s
+                settleUsingBurn: false
+            }),
+            trader2HookData
+        );
+
         vm.stopPrank();
 
         // // Hook Orderbook data for trader2 to matche trader1 palced order with marketBuy
