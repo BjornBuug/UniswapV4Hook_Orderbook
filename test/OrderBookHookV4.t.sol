@@ -51,6 +51,7 @@ import {Fixtures} from "./utils/Fixtures.sol";
     but still try to do it with ERC20 tokens and don't specify decimals vs Specify decimals
     TODO: Who should I set as receiver in the OrderHook data => From the flow of funds I think it's poolManager address
     TODO: try to match the placed order using afterswap hook.
+    
 
 
  */
@@ -89,11 +90,13 @@ contract OrderBookHookV4Test is Test, Helpers, Fixtures {
         vm.label(trader1, "Trader1");
         vm.label(trader2, "Trader2");
         vm.label(admin, "Admin");
+        vm.label(UniToken, "UNITOKEN");
 
         vm.label(address(address(this)), "Test Contract");
 
         // Deploy the Wrapped ETH
         WETH weth = new WETH();
+        vm.label(address(weth), "WETH");
 
         // 1- Deploy the matching Engine and connect with the orderbook factory
         //----------------------------------------------------------------------
@@ -153,7 +156,9 @@ contract OrderBookHookV4Test is Test, Helpers, Fixtures {
         // | Hooks.BEFORE_SWAP_RETURNS_DELTA_FLAG
         // Deploy the hook to an address with the correct flags
         address flags = address(
-            uint160(Hooks.AFTER_SWAP_FLAG) ^ (0x4444 << 144) // Namespace the hook to avoid collisions
+            uint160(
+                Hooks.BEFORE_SWAP_FLAG | Hooks.BEFORE_SWAP_RETURNS_DELTA_FLAG
+            ) ^ (0x4444 << 144) // Namespace the hook to avoid collisions
         );
 
         bytes memory constructorArgs = abi.encode(
@@ -168,6 +173,7 @@ contract OrderBookHookV4Test is Test, Helpers, Fixtures {
             flags
         );
         hook = OrderBookHookV4(payable(flags)); // @audit-info check payable if it revert
+        vm.label(address(hook), "Hook Contract");
 
         approveCurrencies(UniToken, address(this), addressesToApprove);
         approveCurrencies(dydxToken, address(this), addressesToApprove);
@@ -313,13 +319,15 @@ contract OrderBookHookV4Test is Test, Helpers, Fixtures {
         );
         vm.stopPrank();
 
+        // // 0x5991A2dF15A8F6A256D3Ec51E99254Cd3fb576A9
+        // Result for 1782000000 UNI the Received 198000000 ether
         bytes memory trader2HookData = hook.getHookData(
             // TODO: Change the price to the current price if it's revert
             2000e8, // => limitPrice in the order book were (1 UNI per DYDX)
             1782000000, // Amount of UNI to swap (178,200,000 * 10^8) for 90% of ETH in the orderbook // @audit-info this might be the reason for revert as it include decimals
             address(trader2), // set the address of the hook as the recipient addeess // It can be the swaprouter, PoolManager, contractHook
-            false, // @audit-info set this to true.
-            1 // @param n The maximum number of orders to match in the orderbook
+            true, // @audit-info set this to true.
+            2 // @param n The maximum number of orders to match in the orderbook
         );
 
         // Trader2 matched the orderSwap Tokens for ETH
@@ -328,8 +336,9 @@ contract OrderBookHookV4Test is Test, Helpers, Fixtures {
             key,
             IPoolManager.SwapParams({
                 zeroForOne: false,
-                amountSpecified: 4782000000, // I need to figout out how of token will fillhout the trader1 place order then put inside the orderhookData
-                sqrtPriceLimitX96: TickMath.MAX_SQRT_PRICE - 1 // For a one-for-zero swap
+                // // I need to figout out how of token will fillhout the trader1 place order then put inside the orderhookData
+                amountSpecified: -4782000000, // @audit check if "ether" is needed
+                sqrtPriceLimitX96: TickMath.MIN_SQRT_PRICE - 1
             }),
             PoolSwapTest.TestSettings({
                 takeClaims: true, // false = ERC20 : true: ERC6909s
@@ -338,7 +347,7 @@ contract OrderBookHookV4Test is Test, Helpers, Fixtures {
             trader2HookData
         );
 
-        vm.stopPrank();
+        // vm.stopPrank();
 
         // // Hook Orderbook data for trader2 to matche trader1 palced order with marketBuy
         // bytes memory trader2HookData = hook.getHookData(
@@ -361,7 +370,7 @@ contract OrderBookHookV4Test is Test, Helpers, Fixtures {
         //         sqrtPriceLimitX96: TickMath.MIN_SQRT_PRICE + 1
         //     }),
         //     PoolSwapTest.TestSettings({
-        //         takeClaims: false, // false = ERC20 : true: ERC6909s
+        //         takeClaims: true, // false = ERC20 : true: ERC6909s
         //         settleUsingBurn: false
         //     }),
         //     trader2HookData

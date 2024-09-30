@@ -52,31 +52,15 @@ contract OrderBookHookV4 is BaseHook {
                 afterAddLiquidity: false,
                 beforeRemoveLiquidity: false,
                 afterRemoveLiquidity: false,
-                beforeSwap: true,
+                beforeSwap: false,
                 afterSwap: true, // set this to true
                 beforeDonate: false,
                 afterDonate: false,
-                beforeSwapReturnDelta: true, // true
+                beforeSwapReturnDelta: false, // true
                 afterSwapReturnDelta: false,
                 afterAddLiquidityReturnDelta: false,
                 afterRemoveLiquidityReturnDelta: false
             });
-    }
-
-    function _toBeforeSwapDelta(
-        int128 deltaSpecified,
-        int128 deltaUnspecified
-    ) internal pure returns (BeforeSwapDelta beforeSwapDelta) {
-        /// @solidity memory-safe-assembly
-        assembly {
-            // Combine deltaSpecified and deltaUnspecified into a single 256-bit value
-            beforeSwapDelta := or(
-                // Shift deltaSpecified left by 128 bits
-                shl(128, deltaSpecified),
-                // Mask deltaUnspecified to ensure it fits in 128 bits
-                and(sub(shl(128, 1), 1), deltaUnspecified)
-            )
-        }
     }
 
     function getHookData(
@@ -89,6 +73,7 @@ contract OrderBookHookV4 is BaseHook {
         return abi.encode(limitPrice, amount, recipient, isMaker, n);
     }
 
+    // // TODO Modifier where only poolManager can call this beforeSwap.
     function afterSwap(
         address,
         PoolKey calldata key,
@@ -102,24 +87,22 @@ contract OrderBookHookV4 is BaseHook {
         // Decode the the orderHook data to retrive te order details
         (
             uint256 limitPrice,
-            uint256 orderBookAmount,
+            uint256 amount,
             address recipient,
             bool isMaker,
-            uint32 n
+            uint32 n,
+            bool isLimitOrder
         ) = abi.decode(
                 orderHookData,
-                (uint256, uint256, address, bool, uint32)
+                (uint256, uint256, address, bool, uint32, bool)
             );
 
-        _matchOrder(
-            key,
-            swapParams,
-            limitPrice,
-            orderBookAmount,
-            recipient,
-            isMaker,
-            n
-        );
+        // // Place the order in the orderbook
+        // _limitOrder(key, swapParams, orderHookData);
+
+        if (!isLimitOrder) {
+            _matchOrder(key, swapParams, limitPrice, recipient, isMaker, n);
+        }
 
         return (BaseHook.afterSwap.selector, int128(0));
     }
@@ -136,7 +119,6 @@ contract OrderBookHookV4 is BaseHook {
         PoolKey calldata key,
         IPoolManager.SwapParams calldata swapParams,
         uint256 limitPrice,
-        uint256 amount,
         address recipient,
         bool isMaker,
         uint32 n
@@ -164,7 +146,7 @@ contract OrderBookHookV4 is BaseHook {
             if (swapParams.zeroForOne) {
                 // base is ETH and Quote is ERC and we are selling ETH
                 (, matchedAmount, ) = IEngine(payable(matchingEngine))
-                    .marketSellETH{value: amount}(
+                    .marketSellETH{value: address(this).balance}(
                     tokenOut, // address of the quote asset
                     isMaker,
                     n,
@@ -173,7 +155,7 @@ contract OrderBookHookV4 is BaseHook {
             } else {
                 // oneForZero => ERC is the base and ETH is quote we are buying ETH
                 (, matchedAmount, ) = IEngine(payable(matchingEngine))
-                    .marketBuyETH{value: amount}(
+                    .marketBuyETH{value: address(this).balance}(
                     tokenIn, // address of the base (ETH in this case)
                     isMaker,
                     n,
@@ -185,15 +167,15 @@ contract OrderBookHookV4 is BaseHook {
             // approve matching engine to send trade tokens on the hooks contract behalf
             // Note: Check the case when the matchingEngine doesn't match the total amount approved in the
             // orderbook we should reset the approval to zero(if needed) (use increaseAllowance)
-
-            IERC20(tokenIn).approve(address(matchingEngine), amount);
+            uint256 balance = IERC20(tokenIn).balanceOf(address(this));
+            IERC20(tokenIn).approve(address(matchingEngine), balance);
             // NOTE Check when tokenIn or out is WETH WETH(ERC20)
             if (swapParams.zeroForOne) {
                 // USDC/LINK pair, selling USDC to get LINK
                 (, matchedAmount, ) = IEngine(matchingEngine).marketSell(
                     tokenIn, // USDC (what we're selling)
                     tokenOut, // LINK (what we're buying)
-                    amount, // Amount of USDC to sell
+                    balance, // Amount of USDC to sell
                     isMaker,
                     n,
                     recipient
@@ -203,33 +185,13 @@ contract OrderBookHookV4 is BaseHook {
                 (, matchedAmount, ) = IEngine(matchingEngine).marketBuy(
                     tokenIn, // LINK (what we're selling)
                     tokenOut, // USDC (what we're buying)
-                    amount, // Amount of LINK to spend
+                    balance, // Amount of LINK to spend
                     isMaker,
                     n,
                     recipient
                 );
             }
         }
-    }
-
-    // // TODO Modifier where only poolManager can call this beforeSwap.
-    function beforeSwap(
-        address,
-        PoolKey calldata key,
-        IPoolManager.SwapParams calldata swapParams,
-        bytes calldata orderHookData
-    ) external override returns (bytes4, BeforeSwapDelta, uint24) {
-        // if (orderHookData.length == 0)
-        //     return (BaseHook.beforeSwap.selector, toBeforeSwapDelta(0, 0), 0);
-
-        uint128 amount = _limitOrder(key, swapParams, orderHookData);
-        // TODO: Add mint for the user to mintERC1155 as receipt
-
-        return (
-            BaseHook.beforeSwap.selector,
-            _toBeforeSwapDelta(int128(amount), 0),
-            0
-        );
     }
 
     // function that allow the limit trade to be executed using orderHookData
@@ -247,10 +209,11 @@ contract OrderBookHookV4 is BaseHook {
             uint256 amount,
             address recipient,
             bool isMaker,
-            uint32 n
+            uint32 n,
+            bool isLimitOrder
         ) = abi.decode(
                 orderHookData,
-                (uint256, uint256, address, bool, uint32)
+                (uint256, uint256, address, bool, uint32, bool)
             );
 
         // Tranfer 0.001 ETH deposited by user from the poolManager to HookContract
