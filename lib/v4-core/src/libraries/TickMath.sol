@@ -95,7 +95,9 @@ library TickMath {
 
             assembly ("memory-safe") {
                 // if (tick > 0) price = type(uint256).max / price;
-                if sgt(tick, 0) { price := div(not(0), price) }
+                if sgt(tick, 0) {
+                    price := div(not(0), price)
+                }
 
                 // this divides by 1<<32 rounding up to go from a Q128.128 to a Q128.96.
                 // we then downcast because we know the result always fits within 160 bits due to our tick input constraint
@@ -261,7 +263,11 @@ library TickMath {
             int24 tickLow = int24((log_sqrt10001 - 3402992956809132418596140100660247210) >> 128);
             int24 tickHi = int24((log_sqrt10001 + 291339464771989622907027621153398088495) >> 128);
 
-            tick = tickLow == tickHi ? tickLow : getSqrtPriceAtTick(tickHi) <= sqrtPriceX96 ? tickHi : tickLow;
+            tick = tickLow == tickHi
+                ? tickLow
+                : getSqrtPriceAtTick(tickHi) <= sqrtPriceX96
+                    ? tickHi
+                    : tickLow;
         }
     }
 }

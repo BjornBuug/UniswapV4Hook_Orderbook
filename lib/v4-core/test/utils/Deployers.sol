@@ -41,6 +41,7 @@ contract Deployers {
     uint160 constant SQRT_PRICE_1_4 = Constants.SQRT_PRICE_1_4;
     uint160 constant SQRT_PRICE_4_1 = Constants.SQRT_PRICE_4_1;
 
+    // slippage tolerance to allow for unlimited price impact(test only)
     uint160 public constant MIN_PRICE_LIMIT = TickMath.MIN_SQRT_PRICE + 1;
     uint160 public constant MAX_PRICE_LIMIT = TickMath.MAX_SQRT_PRICE - 1;
 
