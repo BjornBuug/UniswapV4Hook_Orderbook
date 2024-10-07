@@ -66,7 +66,7 @@ contract Orderbook is IOrderbook, Initializable {
     }
 
     function setLmp(uint256 price) external onlyEngine {
-        if(price == 0) revert PriceIsZero(price);
+        if (price == 0) revert PriceIsZero(price);
         priceLists._setLmp(price);
     }
 
@@ -412,7 +412,10 @@ contract Orderbook is IOrderbook, Initializable {
         return isBid ? _bidOrders._isEmpty(price) : _askOrders._isEmpty(price);
     }
 
-    function convertMarket(uint256 amount, bool isBid) external view returns (uint256 converted) {
+    function convertMarket(
+        uint256 amount,
+        bool isBid
+    ) external view returns (uint256 converted) {
         return convert(priceLists.lmp, amount, isBid);
     }
 
@@ -420,7 +423,7 @@ contract Orderbook is IOrderbook, Initializable {
         uint256 price,
         uint256 amount,
         bool isBid
-    ) public view returns (uint256 converted) { 
+    ) public view returns (uint256 converted) {
         if (isBid) {
             // convert base to quote
             return
