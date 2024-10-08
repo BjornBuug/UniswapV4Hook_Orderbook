@@ -20,6 +20,7 @@ import {MockERC20} from "solmate/src/test/utils/mocks/MockERC20.sol";
 import {IERC20Mock} from "../test/utils/IERC20Mock.sol";
 import {WETH} from "solmate/src/tokens/WETH.sol";
 import {MatchingEngine} from "@standardweb3/exchange/MatchingEngine.sol";
+import {IEngine} from "@standardweb3/exchange/interfaces/IEngine.sol";
 // Contract to create a orderbook factory
 import {OrderbookFactory} from "@standardweb3/exchange/orderbooks/OrderbookFactory.sol";
 import {Helpers} from "./utils/Helpers.sol";
@@ -47,8 +48,11 @@ contract OrderBookHookV4Test is Test, Helpers, Fixtures {
     Currency tokenCurrency0;
 
     address public trader1;
-    address public orderBook;
+    address public orderBook1;
+    address public orderBook2;
     address public trader2;
+    address public orderBookFactory;
+    address public matchingEngine;
     address public admin;
     address[] public users;
 
@@ -77,10 +81,10 @@ contract OrderBookHookV4Test is Test, Helpers, Fixtures {
         //----------------------------------------------------------------------
         // NOTE: address(this) has a admin role
         // deploy Orderbookfactory contract.
-        OrderbookFactory orderBookFactory = new OrderbookFactory();
+        orderBookFactory = address(new OrderbookFactory());
 
         // deploy matchineEngineFactory contract
-        MatchingEngine matchingEngine = new MatchingEngine();
+        matchingEngine = address(new MatchingEngine());
 
         // Intilize the OrderBook factory
         orderBookFactory.initialize(address(matchingEngine));
@@ -174,7 +178,7 @@ contract OrderBookHookV4Test is Test, Helpers, Fixtures {
         );
 
         // add NATIVE/UNI pair in the matching engine contract by creating an orderbook
-        matchingEngine.addPair(
+        orderBook1 = matchingEngine.addPair(
             address(weth), // WETH/NATIVE
             Currency.unwrap(tokenCureency1), // quote UNI
             2000e8 // 2000e8 // InitalMarket price 1ETH = 2000 UNI
@@ -192,7 +196,7 @@ contract OrderBookHookV4Test is Test, Helpers, Fixtures {
         );
 
         // add DYDX/UNI pair in the matching engine contract by creating a Pair
-        matchingEngine.addPair(
+        orderBook2 = matchingEngine.addPair(
             Currency.unwrap(tokenCurrency0), // base DYDX
             Currency.unwrap(tokenCureency1), // quote UNI
             100e8 // InitalMarket price were 1 UNI = 1 DYDX
@@ -216,12 +220,19 @@ contract OrderBookHookV4Test is Test, Helpers, Fixtures {
 
         /*******************************************ORDER NUM: 1 => Limit Sell Order************************************************/
 
+        // Trader1 balance in ETH and UNI before conducting the swap throught the orderbook and the AMM
+        uint256 trader1EthBalBefSwap = address(trader1).balance;
+        uint256 trader1UniBalBefSwap = UNITOKEN.balanceOf(address(trader1));
+
+        console2.log("trader1 Eth Bal Bef Swap", trader1EthBalBefSwap);
+        console2.log("trader1 Uni Bal Bef Swap", trader1UniBalBefSwap);
+
         // Hook Orderbook data for trader1 to place a limit order of 100,000(1e5) at a price of 2000e8
         bytes memory trader1HookData = hook.getHookData(
             2000e8, // Limit price (1 ETH = 2000 UNI)
             2 ether, // Base asset amount for the limit sell order
             address(trader1),
-            true,
+            true, // indicating if the order should be placed at limit price
             2 // The maximum number of orders to match in the orderbook
         );
 
@@ -246,26 +257,44 @@ contract OrderBookHookV4Test is Test, Helpers, Fixtures {
         );
         vm.stopPrank();
 
+        uint256 trader1EthBalAftSwap = address(trader1).balance;
+        uint256 trader1UniBalAftSwap = UNITOKEN.balanceOf(address(trader1));
+
+        vm.assertEq(trader1UniBalBefSwap, trader1UniBalBefSwap);
+
+        console2.log("trader1 Eth Bal Aft Swap", trader1EthBalAftSwap);
+        console2.log("trader1 Uni Bal Aft Swap", trader1UniBalAftSwap);
+
         /*******************************************ORDER NUM: 2 => Limit Buy Order **********************************************/
 
-        // get the required amount in UNI tokens to match 100% of the Trader1 order.
-        uint256 requiredAmount = IOrderbook(orderBook).getRequired(
-            false,
-            2000e18,
-            1 // trader1 OrderID
+        // get the required amount in UNI tokens to match 100% of the Trader1 order without fee
+        uint256 requiredAmount = IOrderbook(orderBook1).getRequired(
+            false, // => is bid (False) => Trader1 order is an ask not a bid
+            2000e8,
+            1 // => trader1 OrderID
         );
+
+        // calculate the fee on the requirementAmount that trader2 has to pay to match 100% trader1 placedOrder
+        uint256 fee = IEngine(address(matchingEngine)).feeCalculator(
+            requiredAmount,
+            trader2,
+            true
+        );
+
+        console2.log("required Amount", fee);
+        console2.log("required Amount", requiredAmount);
 
         // Hook Orderbook data for trader2 to place a limit buy order of 1782000000 of UNI at a price of 2000e8
         bytes memory trader2HookData = hook.getHookData(
             2000e8, // Limit price (1 ETH = 2000 UNI)
             // Amount of UNI to swap (178,200,000 * 10^8) for 90% of ETH in the orderbook
-            4000e18, // // Base asset amount for the limit buy order
+            requiredAmount + fee, // // Base asset amount for the limit buy order
             address(trader2),
             true,
             2 // The maximum number of orders to match in the orderbook
         );
 
-        // Trader2 matched the orderSwap Tokens for ETH
+        // // Trader2 matched the orderSwap Tokens for ETH
         vm.startPrank(trader2);
         swapRouter.swap(
             key_1,

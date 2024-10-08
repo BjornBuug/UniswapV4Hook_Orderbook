@@ -52,6 +52,12 @@ interface IEngine {
         address recipient
     ) external returns (uint256 makePrice, uint256 placed, uint32 id);
 
+    function feeCalculator(
+        uint256 amount,
+        address account,
+        bool isMaker
+    ) external view returns (uint256 fee);
+
     function limitSell(
         address base,
         address quote,
